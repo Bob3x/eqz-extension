@@ -1,0 +1,42 @@
+{
+    "manifest_version": 3,
+    "name": "Equalizer",
+    "version": "1.0.0",
+    "description": "5-band Web Audio equalizer for every tab.",
+
+    "permissions": ["activeTab", "scripting", "storage"],
+
+    "host_permissions": ["<all_urls>"],
+
+    "action": {
+        "default_popup": "src/popup/popup.html",
+        "default_title": "Equalizer",
+        "default_icon": {
+            "16": "favicon.svg",
+            "32": "favicon.svg",
+            "48": "favicon.svg",
+            "128": "favicon.svg"
+        }
+    },
+
+    "background": {
+        "service_worker": "src/background/service-worker.ts",
+        "type": "module"
+    },
+
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["src/content/content.ts"],
+            "run_at": "document_idle",
+            "all_frames": true
+        }
+    ],
+
+    "icons": {
+        "16": "favicon.svg",
+        "32": "favicon.svg",
+        "48": "favicon.svg",
+        "128": "favicon.svg"
+    }
+}
