@@ -6,7 +6,13 @@ import manifest from "./manifest.json";
 import type { ManifestV3Export } from "@crxjs/vite-plugin";
 
 export default defineConfig({
-    plugins: [react(), tailwindcss(), crx({ manifest: manifest as ManifestV3Export })],
+    plugins: [
+        react(),
+        tailwindcss(),
+        ...(process.env.NODE_ENV === "production"
+            ? [crx({ manifest: manifest as ManifestV3Export })]
+            : [])
+    ],
 
     build: {
         outDir: "dist",
