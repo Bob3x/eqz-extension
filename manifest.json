@@ -1,16 +1,14 @@
 {
     "manifest_version": 3,
-    "name": "Equalizer",
+    "name": "FreqWave EQ",
     "version": "1.0.0",
-    "description": "5-band Web Audio equalizer for every tab.",
+    "description": "8-band Web Audio equalizer for browser tabs.",
 
-    "permissions": ["activeTab", "scripting", "storage"],
-
-    "host_permissions": ["<all_urls>"],
+    "permissions": ["activeTab", "tabCapture", "offscreen", "storage"],
 
     "action": {
         "default_popup": "src/popup/popup.html",
-        "default_title": "Equalizer",
+        "default_title": "FreqWave EQ",
         "default_icon": {
             "16": "favicon.svg",
             "32": "favicon.svg",
@@ -23,15 +21,6 @@
         "service_worker": "src/background/service-worker.ts",
         "type": "module"
     },
-
-    "content_scripts": [
-        {
-            "matches": ["<all_urls>"],
-            "js": ["src/content/content.ts"],
-            "run_at": "document_idle",
-            "all_frames": true
-        }
-    ],
 
     "icons": {
         "16": "favicon.svg",

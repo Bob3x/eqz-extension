@@ -17,8 +17,13 @@ export default defineConfig({
     build: {
         outDir: "dist",
         emptyOutDir: true,
-        // Vite 6: raise the inline threshold so small assets stay in JS bundles
-        assetsInlineLimit: 4096
+        assetsInlineLimit: 4096,
+        rollupOptions: {
+            input: {
+                // CRXJS handles popup + service worker; we add the offscreen doc manually.
+                offscreen: "src/offscreen/offscreen.html"
+            }
+        }
     },
 
     // crxjs expects the server to run on a stable port during development so

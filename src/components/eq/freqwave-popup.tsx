@@ -1,15 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { RotaryKnob } from "./rotary-knob";
 import { WaveformVisualizer } from "./waveform-visualizer";
 import { EQFader } from "./eq-fader";
+import type {
+    EngineState,
+    QueryStateMsg,
+    SetBandGainMsg,
+    SetMasterGainMsg,
+    SetPreampGainMsg,
+    StartCaptureMsg,
+    StateChangedMsg,
+    StopCaptureMsg,
+} from "../../messages/types";
+
+// Knob value (0–100 %) → master dB (−60 to 0). Linear in dB = perceptual.
+function masterPctToDb(pct: number): number {
+    return (pct / 100) * 60 - 60;
+}
+
+// Knob value (0–100 %) → pre-amp dB (−24 to +12).
+function preampPctToDb(pct: number): number {
+    return (pct / 100) * 36 - 24;
+}
 
 // Define our available DSP enhancer states
 type VoiceMode = "off" | "dialogue" | "leveler" | "clarity";
 
+function sendMasterGain(pct: number) {
+    const msg: SetMasterGainMsg = { kind: "SET_MASTER_GAIN", gainDb: masterPctToDb(pct) };
+    chrome.runtime.sendMessage(msg).catch(() => { /* engine may be idle */ });
+}
+
+function sendPreampGain(pct: number) {
+    const msg: SetPreampGainMsg = { kind: "SET_PREAMP_GAIN", gainDb: preampPctToDb(pct) };
+    chrome.runtime.sendMessage(msg).catch(() => { /* engine may be idle */ });
+}
+
+function sendBandGain(bandIndex: number, gainDb: number) {
+    const msg: SetBandGainMsg = { kind: "SET_BAND_GAIN", bandIndex, gainDb };
+    chrome.runtime.sendMessage(msg).catch(() => { /* engine may be idle */ });
+}
+
 export function FreqWavePopup() {
+    const [engineState, setEngineState] = useState<EngineState>("idle");
+    const [capturedHostname, setCapturedHostname] = useState<string | null>(null);
+    const [statusError, setStatusError] = useState<string | null>(null);
     const [voiceMode, setVoiceMode] = useState<VoiceMode>("off");
     const [faderValues, setFaderValues] = useState({
         "32Hz": 0,
@@ -21,6 +59,46 @@ export function FreqWavePopup() {
         "4kHz": 0,
         "8kHz": 0
     });
+
+    // Sync state on mount.
+    useEffect(() => {
+        const msg: QueryStateMsg = { kind: "QUERY_STATE" };
+        chrome.runtime.sendMessage(msg, (res) => {
+            if (res) {
+                setEngineState(res.state);
+                setCapturedHostname(res.capturedHostname);
+            }
+        });
+    }, []);
+
+    // Stay in sync while the popup is open.
+    useEffect(() => {
+        const listener = (message: unknown) => {
+            const msg = message as StateChangedMsg;
+            if (msg?.kind === "STATE_CHANGED") {
+                setEngineState(msg.state);
+                setCapturedHostname(msg.capturedHostname);
+            }
+        };
+        chrome.runtime.onMessage.addListener(listener);
+        return () => chrome.runtime.onMessage.removeListener(listener);
+    }, []);
+
+    const handleBadgeClick = useCallback(() => {
+        if (engineState === "starting") return;
+        if (engineState === "active") {
+            const msg: StopCaptureMsg = { kind: "STOP_CAPTURE" };
+            chrome.runtime.sendMessage(msg).catch(() => { /* ok */ });
+        } else {
+            const msg: StartCaptureMsg = { kind: "START_CAPTURE" };
+            chrome.runtime.sendMessage(msg, (res) => {
+                if (res && !res.ok) {
+                    setStatusError(res.error as string);
+                    setTimeout(() => setStatusError(null), 4000);
+                }
+            });
+        }
+    }, [engineState]);
 
     const handleReset = () => {
         setVoiceMode("off");
@@ -64,11 +142,40 @@ export function FreqWavePopup() {
                         <span className="text-white/60 font-light ml-1">EQ</span>
                     </h1>
 
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#0d0d0d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]">
-                        <div className="w-2 h-2 rounded-full bg-lime-500 animate-pulse shadow-[0_0_8px_rgba(102,204,51,0.8)]" />
-                        <span className="text-[9px] text-[#55AA22] font-semibold tracking-wider uppercase font-mono">
-                            Engine Active
-                        </span>
+                    <div className="flex flex-col items-end gap-0.5">
+                        <div
+                            onClick={handleBadgeClick}
+                            className={cn(
+                                "flex items-center gap-2 px-3 py-1 rounded-full bg-[#0d0d0d] shadow-[inset_0_1px_2px_rgba(0,0,0,0.6)]",
+                                engineState !== "starting" && "cursor-pointer hover:bg-[#1a1a1a]"
+                            )}>
+                            <div className={cn(
+                                "w-2 h-2 rounded-full",
+                                engineState === "idle"     && "bg-zinc-600",
+                                engineState === "starting" && "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]",
+                                engineState === "active"   && "bg-lime-500 animate-pulse shadow-[0_0_8px_rgba(102,204,51,0.8)]"
+                            )} />
+                            <span className={cn(
+                                "text-[9px] font-semibold tracking-wider uppercase font-mono",
+                                engineState === "idle"     && "text-zinc-500",
+                                engineState === "starting" && "text-amber-400",
+                                engineState === "active"   && "text-[#55AA22]"
+                            )}>
+                                {engineState === "idle"     && "Engine Idle"}
+                                {engineState === "starting" && "Starting…"}
+                                {engineState === "active"   && "Engine Active"}
+                            </span>
+                        </div>
+                        {engineState === "active" && capturedHostname && (
+                            <span className="text-[8px] text-zinc-500 font-mono px-1">
+                                Capturing: {capturedHostname}
+                            </span>
+                        )}
+                        {statusError && (
+                            <span className="text-[8px] text-red-400 font-mono px-1 max-w-48 text-right leading-tight">
+                                {statusError}
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -80,12 +187,14 @@ export function FreqWavePopup() {
                             subLabel="dB GAIN"
                             size="large"
                             defaultValue={65}
+                            onChange={sendMasterGain}
                         />
                         <RotaryKnob
                             label="PRE-AMP"
                             subLabel="dB BOOST"
                             size="small"
                             defaultValue={40}
+                            onChange={sendPreampGain}
                         />
                     </div>
 
@@ -135,7 +244,7 @@ export function FreqWavePopup() {
                 {/* 4. Bottom EQ Zone - 8 Faders Layout Array */}
                 <div className="px-1">
                     <div className="w-full flex justify-between items-center bg-[#0c0c0c]/50 p-4 rounded-2xl border border-[#222]/40 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)]">
-                        {Object.keys(faderValues).map((band) => (
+                        {Object.keys(faderValues).map((band, bandIndex) => (
                             <div
                                 key={band}
                                 onDoubleClick={() =>
@@ -145,9 +254,10 @@ export function FreqWavePopup() {
                                 <EQFader
                                     label={band}
                                     defaultValue={faderValues[band as keyof typeof faderValues]}
-                                    onChange={(v) =>
-                                        setFaderValues((prev) => ({ ...prev, [band]: v }))
-                                    }
+                                    onChange={(v) => {
+                                        setFaderValues((prev) => ({ ...prev, [band]: v }));
+                                        sendBandGain(bandIndex, v);
+                                    }}
                                 />
                             </div>
                         ))}

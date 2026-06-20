@@ -1,17 +1,207 @@
-/**
- * service-worker.ts — Equalizer background service worker
- *
- * Responsibilities:
- *  • Install / update lifecycle hooks.
- *  • Relay any messages that the popup cannot send directly (none currently,
- *    but the relay pattern is wired so it can be extended without refactoring).
- *  • Keep the extension icon in a known visual state.
- *
- * Intentionally minimal — all audio logic lives in content.ts.
- * MV3 service workers must NOT use tabCapture or any MV2-only APIs.
- */
-
 /// <reference types="chrome"/>
+
+import type {
+    AnyMessage,
+    EngineState,
+    InitCaptureMsg,
+    StateChangedMsg,
+    SwToOffscreenMessage,
+} from "../messages/types";
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+let engineState: EngineState = "idle";
+let capturedTabId: number | null = null;
+let capturedHostname: string | null = null;
+
+// Whether we've ever created the offscreen document this SW lifetime.
+// The doc is persistent (not destroyed on STOP), so once true it stays true.
+let offscreenDocCreated = false;
+
+// Resolves when the offscreen doc sends OFFSCREEN_READY.
+let offscreenReadyResolve: (() => void) | null = null;
+let offscreenReadyPromise: Promise<void> = Promise.resolve();
+
+// ---------------------------------------------------------------------------
+// Persist state across SW suspensions via session storage.
+// session storage clears on browser close but survives the ~30-second
+// idle suspension that MV3 service workers undergo.
+// ---------------------------------------------------------------------------
+
+const SESSION_KEY = "freqwave_sw_state";
+
+interface PersistedState {
+    engineState: EngineState;
+    capturedTabId: number | null;
+    capturedHostname: string | null;
+}
+
+function persistState(): void {
+    const data: PersistedState = { engineState, capturedTabId, capturedHostname };
+    chrome.storage.session.set({ [SESSION_KEY]: data }).catch(() => { /* ok */ });
+}
+
+// Restore is awaited before processing START_CAPTURE / QUERY_STATE so that
+// state is always current even on first wake after suspension.
+const stateRestored: Promise<void> = chrome.storage.session
+    .get(SESSION_KEY)
+    .then((result) => {
+        const saved = result[SESSION_KEY] as PersistedState | undefined;
+        if (!saved) return;
+
+        // If the SW was suspended mid-"starting", treat it as idle.
+        if (saved.engineState === "starting") return;
+
+        engineState = saved.engineState;
+        capturedTabId = saved.capturedTabId;
+        capturedHostname = saved.capturedHostname;
+
+        // If we were active, the offscreen doc is still alive.
+        if (engineState === "active") offscreenDocCreated = true;
+    })
+    .catch(() => { /* storage unavailable — start fresh */ });
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function broadcastState() {
+    const msg: StateChangedMsg = {
+        kind: "STATE_CHANGED",
+        state: engineState,
+        capturedTabId,
+        capturedHostname,
+    };
+    chrome.runtime.sendMessage(msg).catch(() => { /* no popup open */ });
+    persistState();
+}
+
+async function ensureOffscreenDocument(): Promise<void> {
+    if (offscreenDocCreated) return;
+
+    const offscreenUrl = chrome.runtime.getURL("src/offscreen/offscreen.html");
+
+    offscreenReadyPromise = new Promise<void>((resolve) => {
+        offscreenReadyResolve = resolve;
+    });
+
+    await chrome.offscreen.createDocument({
+        url: offscreenUrl,
+        reasons: [chrome.offscreen.Reason.USER_MEDIA],
+        justification: "Capture and process tab audio via Web Audio API.",
+    });
+
+    offscreenDocCreated = true;
+    await offscreenReadyPromise;
+}
+
+function sendToOffscreen(msg: SwToOffscreenMessage) {
+    chrome.runtime.sendMessage(msg).catch(() => {
+        console.warn("[SW] Could not reach offscreen doc:", msg.kind);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Message handler
+// ---------------------------------------------------------------------------
+
+chrome.runtime.onMessage.addListener(
+    (message: AnyMessage, _sender, sendResponse) => {
+        const kind = (message as { kind: string }).kind;
+
+        switch (kind) {
+            // ------------------------------------------------------------------
+            case "OFFSCREEN_READY":
+                offscreenReadyResolve?.();
+                offscreenReadyResolve = null;
+                return false;
+
+            // ------------------------------------------------------------------
+            case "ENGINE_STOPPED":
+                engineState = "idle";
+                capturedTabId = null;
+                capturedHostname = null;
+                broadcastState();
+                return false;
+
+            // ------------------------------------------------------------------
+            case "START_CAPTURE": {
+                (async () => {
+                    await stateRestored;
+
+                    if (engineState !== "idle") {
+                        sendResponse({
+                            ok: false,
+                            error: `Engine is active on ${capturedHostname ?? "another tab"}. Stop it first.`,
+                        });
+                        return;
+                    }
+
+                    try {
+                        const [activeTab] = await chrome.tabs.query({
+                            active: true,
+                            currentWindow: true,
+                        });
+                        if (!activeTab?.id) throw new Error("No active tab.");
+
+                        engineState = "starting";
+                        capturedTabId = activeTab.id;
+                        capturedHostname = activeTab.url
+                            ? new URL(activeTab.url).hostname
+                            : null;
+                        broadcastState();
+
+                        const streamId = await chrome.tabCapture.getMediaStreamId({
+                            targetTabId: activeTab.id,
+                        });
+
+                        await ensureOffscreenDocument();
+
+                        const initMsg: InitCaptureMsg = { kind: "INIT_CAPTURE", streamId };
+                        sendToOffscreen(initMsg);
+
+                        engineState = "active";
+                        broadcastState();
+                        sendResponse({ ok: true });
+                    } catch (err) {
+                        console.error("[SW] START_CAPTURE failed:", err);
+                        engineState = "idle";
+                        capturedTabId = null;
+                        capturedHostname = null;
+                        broadcastState();
+                        sendResponse({ ok: false, error: String(err) });
+                    }
+                })();
+                return true; // keep channel open for async sendResponse
+            }
+
+            // ------------------------------------------------------------------
+            case "STOP_CAPTURE":
+                sendToOffscreen({ kind: "TEARDOWN_CAPTURE" });
+                engineState = "idle";
+                capturedTabId = null;
+                capturedHostname = null;
+                broadcastState();
+                sendResponse({ ok: true });
+                return false;
+
+            // ------------------------------------------------------------------
+            case "QUERY_STATE": {
+                (async () => {
+                    await stateRestored;
+                    sendResponse({ state: engineState, capturedTabId, capturedHostname });
+                })();
+                return true; // async
+            }
+
+            // ------------------------------------------------------------------
+            default:
+                return false;
+        }
+    }
+);
 
 // ---------------------------------------------------------------------------
 // Install / update
@@ -23,33 +213,4 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
     } else if (reason === chrome.runtime.OnInstalledReason.UPDATE) {
         console.log("[EQ SW] Extension updated.");
     }
-});
-
-// ---------------------------------------------------------------------------
-// Optional relay: forward popup → content-script messages
-// (The popup uses chrome.tabs.sendMessage directly, so this path is only
-//  needed if a future feature requires the SW as an intermediary.)
-// ---------------------------------------------------------------------------
-
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-    // Guard: only handle relay requests; content-script messages are handled
-    // inside content.ts itself.
-    if (
-        typeof message === "object" &&
-        message !== null &&
-        (message as Record<string, unknown>)["__relay"] === true
-    ) {
-        const { tabId, payload } = message as {
-            tabId: number;
-            payload: unknown;
-        };
-        chrome.tabs.sendMessage(tabId, payload, (response) => {
-            sendResponse(response);
-        });
-        // Keep the message channel open for async sendResponse.
-        return true;
-    }
-
-    // Not a relay — ignore, let other listeners handle it.
-    return false;
 });
