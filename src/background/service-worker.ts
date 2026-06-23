@@ -83,18 +83,24 @@ async function ensureOffscreenDocument(): Promise<void> {
 
     const offscreenUrl = chrome.runtime.getURL("src/offscreen/offscreen.html");
 
-    offscreenReadyPromise = new Promise<void>((resolve) => {
-        offscreenReadyResolve = resolve;
-    });
+    // hasDocument() guards against SW suspension resetting offscreenDocCreated
+    // while the offscreen doc itself is still alive.
+    const exists = await chrome.offscreen.hasDocument();
+    if (!exists) {
+        offscreenReadyPromise = new Promise<void>((resolve) => {
+            offscreenReadyResolve = resolve;
+        });
 
-    await chrome.offscreen.createDocument({
-        url: offscreenUrl,
-        reasons: [chrome.offscreen.Reason.USER_MEDIA],
-        justification: "Capture and process tab audio via Web Audio API.",
-    });
+        await chrome.offscreen.createDocument({
+            url: offscreenUrl,
+            reasons: [chrome.offscreen.Reason.USER_MEDIA],
+            justification: "Capture and process tab audio via Web Audio API.",
+        });
+
+        await offscreenReadyPromise;
+    }
 
     offscreenDocCreated = true;
-    await offscreenReadyPromise;
 }
 
 function sendToOffscreen(msg: SwToOffscreenMessage) {

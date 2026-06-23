@@ -31,6 +31,11 @@ export interface SetBypassMsg {
     bypassed: boolean;
 }
 
+export interface SetCompressorMsg {
+    kind: "SET_COMPRESSOR";
+    enabled: boolean;
+}
+
 export interface QueryStateMsg {
     kind: "QUERY_STATE";
 }
@@ -42,6 +47,7 @@ export type PopupToSwMessage =
     | SetPreampGainMsg
     | SetMasterGainMsg
     | SetBypassMsg
+    | SetCompressorMsg
     | QueryStateMsg;
 
 // ---------------------------------------------------------------------------
@@ -63,7 +69,8 @@ export type SwToOffscreenMessage =
     | SetBandGainMsg
     | SetPreampGainMsg
     | SetMasterGainMsg
-    | SetBypassMsg;
+    | SetBypassMsg
+    | SetCompressorMsg;
 
 // ---------------------------------------------------------------------------
 // Offscreen Document → Service Worker

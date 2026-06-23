@@ -61,7 +61,8 @@ export function Spectrum({ bands, engineActive }: SpectrumProps) {
                 const noise = engine
                     ? (Math.sin(x * 0.03 + t * 2) + Math.sin(x * 0.013 - t * 1.3) * 0.6) * 3
                     : Math.sin(x * 0.02 + t) * 1.1;
-                pts.push([x, mid - infl * 3 * amp + noise * amp]);
+                const pad = 5;
+                pts.push([x, Math.max(pad, Math.min(H - pad, mid - infl * 3 * amp + noise * amp))]);
             }
 
             const col  = engine ? "169,232,12" : "120,124,130";
@@ -109,7 +110,7 @@ export function Spectrum({ bands, engineActive }: SpectrumProps) {
             ].join(","),
             backgroundSize: "100% 32px, 12.5% 100%",
         }}>
-            <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+            <canvas ref={canvasRef} style={{ width: "100%", height: "calc(100% - 10px)", marginTop: "5px", display: "block" }} />
         </div>
     );
 }

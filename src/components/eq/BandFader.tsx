@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 const ACCENT = "var(--accent, #a9e80c)";
 
@@ -9,11 +9,18 @@ interface BandFaderProps {
 }
 
 export function BandFader({ freq, value, onChange }: BandFaderProps) {
+    const [hovered, setHovered] = useState(false);
+
     const pct    = (value + 12) / 24;
     const lo     = Math.min(pct, 0.5);
     const hi     = Math.max(pct, 0.5);
     const dbText = (value > 0 ? "+" : "") + value.toFixed(1);
     const dbColor = Math.abs(value) < 0.05 ? "#5d5d65" : ACCENT;
+
+    // Green intensity: 40% at 0 dB, 100% at ±12 dB
+    const intensity  = 0.4 + 0.6 * Math.min(1, Math.abs(value) / 12);
+    const fillColor  = `rgba(169,232,12,${intensity.toFixed(2)})`;
+    const glowColor  = `rgba(169,232,12,${(intensity * 0.45).toFixed(2)})`;
 
     const handleBottom = `calc(${(pct * 100).toFixed(1)}% - 7px)`;
     const fillBottom   = `${(lo * 100).toFixed(1)}%`;
@@ -21,6 +28,7 @@ export function BandFader({ freq, value, onChange }: BandFaderProps) {
 
     const handlePointerDown = useCallback((e: React.PointerEvent) => {
         e.preventDefault();
+        document.body.style.cursor = "grabbing";
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const set = (clientY: number) => {
             const p  = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
@@ -30,6 +38,7 @@ export function BandFader({ freq, value, onChange }: BandFaderProps) {
         set(e.clientY);
         const move = (ev: PointerEvent) => set(ev.clientY);
         const up   = () => {
+            document.body.style.cursor = "";
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
         };
@@ -52,9 +61,11 @@ export function BandFader({ freq, value, onChange }: BandFaderProps) {
             <div
                 onPointerDown={handlePointerDown}
                 onDoubleClick={e => { e.preventDefault(); onChange(0); }}
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
                 style={{
                     position: "relative", width: "34px", height: "100px",
-                    margin: "6px 0", cursor: "ns-resize", touchAction: "none",
+                    margin: "6px 0", cursor: "pointer", touchAction: "none",
                     display: "flex", justifyContent: "center",
                 }}
             >
@@ -78,8 +89,8 @@ export function BandFader({ freq, value, onChange }: BandFaderProps) {
                     position: "absolute", left: "50%",
                     width: "5px", marginLeft: "-2.5px",
                     borderRadius: "3px",
-                    background: ACCENT,
-                    boxShadow: "0 0 8px rgba(169,232,12,.5)",
+                    background: fillColor,
+                    boxShadow: `0 0 8px ${glowColor}`,
                     bottom: fillBottom, height: fillHeight,
                 }} />
 
@@ -88,16 +99,21 @@ export function BandFader({ freq, value, onChange }: BandFaderProps) {
                     position: "absolute", left: "50%",
                     width: "30px", height: "14px", marginLeft: "-15px",
                     borderRadius: "4px",
-                    background: "linear-gradient(180deg,#3a3c43,#222328)",
-                    border: "1px solid rgba(0,0,0,.6)",
-                    boxShadow: "0 3px 6px -1px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.12)",
+                    background: hovered
+                        ? "linear-gradient(180deg,#56585f,#30323a)"
+                        : "linear-gradient(180deg,#46484f,#282a30)",
+                    border: "1px solid rgba(0,0,0,.5)",
+                    boxShadow: hovered
+                        ? "0 3px 8px -1px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.2)"
+                        : "0 3px 6px -1px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.15)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     bottom: handleBottom,
+                    transition: "background .12s, box-shadow .12s",
                 }}>
                     <div style={{
                         width: "14px", height: "2px", borderRadius: "1px",
-                        background: ACCENT,
-                        boxShadow: "0 0 6px rgba(169,232,12,.7)",
+                        background: fillColor,
+                        boxShadow: `0 0 6px ${glowColor}`,
                     }} />
                 </div>
             </div>

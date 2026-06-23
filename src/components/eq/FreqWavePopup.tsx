@@ -3,6 +3,7 @@ import type {
     EngineState,
     QueryStateMsg,
     SetBandGainMsg,
+    SetCompressorMsg,
     SetMasterGainMsg,
     SetPreampGainMsg,
     StartCaptureMsg,
@@ -52,6 +53,11 @@ function sendPreampGain(db: number) {
 
 function sendBandGain(bandIndex: number, gainDb: number) {
     const msg: SetBandGainMsg = { kind: "SET_BAND_GAIN", bandIndex, gainDb };
+    chrome.runtime.sendMessage(msg).catch(() => { /* engine may be idle */ });
+}
+
+function sendCompressor(enabled: boolean) {
+    const msg: SetCompressorMsg = { kind: "SET_COMPRESSOR", enabled };
     chrome.runtime.sendMessage(msg).catch(() => { /* engine may be idle */ });
 }
 
@@ -130,6 +136,23 @@ export function FreqWavePopup() {
         return () => chrome.runtime.onMessage.removeListener(listener);
     }, []);
 
+    // ── Re-sync EQ to the audio graph whenever the engine (re-)activates ─────
+    // The offscreen graph is rebuilt fresh on every INIT_CAPTURE, so gains reset
+    // to Web Audio defaults. Push current settings whenever we enter "active".
+    const prevEngineState = useRef<EngineState>("idle");
+    useEffect(() => {
+        if (engineState === "active" && prevEngineState.current !== "active") {
+            const s = latestSettings.current;
+            if (s !== null) {
+                sendMasterGain(s.master);
+                sendPreampGain(s.preamp);
+                s.bands.forEach((db, i) => sendBandGain(i, db));
+                sendCompressor(s.preset === "LEVELER");
+            }
+        }
+        prevEngineState.current = engineState;
+    }, [engineState]);
+
     // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handleBadgeClick = useCallback(() => {
@@ -152,6 +175,7 @@ export function FreqWavePopup() {
         const values = [...PRESETS[name]] as number[];
         setSettings(s => ({ ...(s ?? DEFAULT_SETTINGS), bands: values, preset: name }));
         values.forEach((db, i) => sendBandGain(i, db));
+        sendCompressor(name === "LEVELER");
     }, []);
 
     const handleZeroEQ = useCallback(() => {
@@ -160,6 +184,7 @@ export function FreqWavePopup() {
         zeros.forEach((_, i) => sendBandGain(i, 0));
         sendMasterGain(0);
         sendPreampGain(0);
+        sendCompressor(false);
     }, []);
 
     const handleMasterChange = useCallback((db: number) => {
@@ -203,7 +228,7 @@ export function FreqWavePopup() {
         : "rgba(0,0,0,0)";
 
     const engineLabel = engineState === "active"
-        ? "Engine Active"
+        ? "Engine On"
         : engineState === "starting"
         ? "Starting…"
         : "Engine Off";
@@ -217,7 +242,6 @@ export function FreqWavePopup() {
     // ---------------------------------------------------------------------------
 
     const presetIdx = PRESET_ORDER.indexOf(preset ?? "OFF");
-    const pillTx    = `${(presetIdx < 0 ? 0 : presetIdx) * 100}%`;
 
     // ---------------------------------------------------------------------------
     // Render
@@ -271,11 +295,13 @@ export function FreqWavePopup() {
                         </span>
                     </div>
 
-                    {engineState === "active" && capturedHostname && (
-                        <span style={{ fontSize: "9px", color: "#5d5d65", fontFamily: "'JetBrains Mono', monospace", paddingRight: "2px" }}>
-                            Capturing: {capturedHostname}
-                        </span>
-                    )}
+                    <span style={{
+                        fontSize: "9px", color: "#5d5d65",
+                        fontFamily: "'JetBrains Mono', monospace", paddingRight: "2px",
+                        visibility: (engineState === "active" && capturedHostname) ? "visible" : "hidden",
+                    }}>
+                        {capturedHostname ? `Capturing: ${capturedHostname}` : "Capturing: –"}
+                    </span>
                     {statusError && (
                         <span style={{ fontSize: "9px", color: "#f87171", fontFamily: "'JetBrains Mono', monospace", maxWidth: "220px", textAlign: "right", lineHeight: 1.3 }}>
                             {statusError}
@@ -308,48 +334,21 @@ export function FreqWavePopup() {
                     <div style={{ fontSize: "14px", fontWeight: 700, color: "#e8e8ec", letterSpacing: "-.01em" }}>
                         Voice Enhancer
                     </div>
-                    <div style={{
-                        fontSize: "9px", letterSpacing: ".14em", textTransform: "uppercase",
-                        color: "#5d5d65", marginTop: "3px", fontWeight: 600,
-                        fontFamily: "'JetBrains Mono', monospace",
-                    }}>
-                        DSP Algorithmic Presets
-                    </div>
-
-                    {/* Pill selector */}
-                    <div style={{
-                        position: "relative", display: "flex",
-                        marginTop: "12px", padding: "4px",
-                        borderRadius: "12px",
-                        background: "#0f1012",
-                        border: "1px solid rgba(255,255,255,.06)",
-                        boxShadow: "inset 0 2px 5px rgba(0,0,0,.5)",
-                    }}>
-                        {/* Sliding pill */}
-                        <div style={{
-                            position: "absolute", top: "4px", left: "4px", bottom: "4px",
-                            width: "calc((100% - 8px) / 4)",
-                            borderRadius: "8px",
-                            background: "rgba(169,232,12,.12)",
-                            border: "1px solid rgba(169,232,12,.45)",
-                            boxShadow: "0 0 14px rgba(169,232,12,.18)",
-                            transition: "transform .28s cubic-bezier(.4,0,.2,1)",
-                            transform: `translateX(${pillTx})`,
-                            pointerEvents: "none",
-                        }} />
+                    {/* Mode buttons */}
+                    <div style={{ display: "flex", gap: "2px", marginTop: "10px", justifyContent: "flex-end" }}>
                         {PRESET_ORDER.map((name, i) => (
                             <button
                                 key={name}
                                 onClick={() => applyPreset(name)}
                                 style={{
-                                    position: "relative", zIndex: 1,
-                                    flex: 1, border: "none", background: "none",
-                                    cursor: "pointer", padding: "8px 0",
+                                    border: "none", background: "none",
+                                    cursor: "pointer", padding: "6px 9px",
                                     fontFamily: "'Archivo', sans-serif",
-                                    fontSize: "10px", fontWeight: 600,
-                                    letterSpacing: ".04em", textTransform: "uppercase",
-                                    color: presetIdx === i ? ACCENT : "#83838b",
-                                    transition: "color .2s",
+                                    fontSize: "11px",
+                                    fontWeight: presetIdx === i ? 700 : 500,
+                                    letterSpacing: ".07em", textTransform: "uppercase",
+                                    color: presetIdx === i ? ACCENT : "#4a4a54",
+                                    transition: "color .15s",
                                 }}
                             >
                                 {name.charAt(0) + name.slice(1).toLowerCase()}
@@ -388,7 +387,7 @@ export function FreqWavePopup() {
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: "10px", letterSpacing: ".1em", color: "#44444c",
                 }}>
-                    AUDIO ENHANCEMENT SUITE · V1.0
+                    FreqWave · v1.0
                 </div>
                 <button
                     onClick={handleZeroEQ}
@@ -415,7 +414,7 @@ export function FreqWavePopup() {
                         el.style.boxShadow = "none";
                     }}
                 >
-                    Zero EQ
+                    Reset
                 </button>
             </div>
 

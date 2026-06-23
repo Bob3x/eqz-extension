@@ -91,6 +91,12 @@ export function Knob({ label, size, defaultValue = 0, onChange }: KnobProps) {
         ? "inset 0 2px 3px rgba(255,255,255,.06),inset 0 -8px 16px rgba(0,0,0,.6),0 10px 22px -8px rgba(0,0,0,.85)"
         : "inset 0 2px 3px rgba(255,255,255,.06),inset 0 -6px 12px rgba(0,0,0,.6),0 8px 16px -6px rgba(0,0,0,.85)";
 
+    // Arc color: fixed hue (73°, same as accent #a9e80c), lightness 10%→48% as |dB| increases.
+    // Avoids opacity-over-dark hue shift while keeping the exact accent hue.
+    const arcT          = Math.min(1, Math.abs(defaultValue) / 12);
+    const arcStroke     = `hsl(73,91%,${(10 + 38 * arcT).toFixed(1)}%)`;
+    const arcGlowOpacity = (0.15 + 0.35 * arcT).toFixed(2);
+
     // dB readout: "0.0 dB", "+2.4 dB", "-3.6 dB"
     const isZero = Math.abs(defaultValue) < 0.05;
     const dbText = isZero ? "0.0 dB" : `${defaultValue > 0 ? "+" : ""}${defaultValue.toFixed(1)} dB`;
@@ -98,6 +104,7 @@ export function Knob({ label, size, defaultValue = 0, onChange }: KnobProps) {
     // Drag: 0.15 dB/px → full 24 dB range over ~160 px of vertical travel
     const handlePointerDown = useCallback((e: React.PointerEvent) => {
         e.preventDefault();
+        document.body.style.cursor = "grabbing";
         const startY   = e.clientY;
         const startVal = currentValue.current;
         const move = (ev: PointerEvent) => {
@@ -105,6 +112,7 @@ export function Knob({ label, size, defaultValue = 0, onChange }: KnobProps) {
             onChange?.(nv);
         };
         const up = () => {
+            document.body.style.cursor = "";
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
         };
@@ -122,7 +130,7 @@ export function Knob({ label, size, defaultValue = 0, onChange }: KnobProps) {
             <div
                 onPointerDown={handlePointerDown}
                 onDoubleClick={handleDoubleClick}
-                style={{ position: "relative", width: svgSize, height: svgSize, cursor: "ns-resize", touchAction: "none", userSelect: "none" }}
+                style={{ position: "relative", width: svgSize, height: svgSize, cursor: "pointer", touchAction: "none", userSelect: "none" }}
             >
                 <svg
                     width={svgSize} height={svgSize}
@@ -136,9 +144,9 @@ export function Knob({ label, size, defaultValue = 0, onChange }: KnobProps) {
                     />
                     {/* Active fill — extends from 12 o'clock toward current value */}
                     <circle cx={cx} cy={cx} r={r} fill="none"
-                        stroke={ACCENT} strokeWidth={sw} strokeLinecap="round"
+                        stroke={arcStroke} strokeWidth={sw} strokeLinecap="butt"
                         strokeDasharray={activeDash} transform={`rotate(135 ${cx} ${cx})`}
-                        style={{ filter: "drop-shadow(0 0 5px rgba(169,232,12,.5))" }}
+                        style={{ filter: `drop-shadow(0 0 5px rgba(169,232,12,${arcGlowOpacity}))` }}
                     />
                     {/* Tick marks */}
                     {ticks.map(({ db, kind, x1, y1, x2, y2 }) => (
@@ -146,9 +154,9 @@ export function Knob({ label, size, defaultValue = 0, onChange }: KnobProps) {
                             x1={x1.toFixed(2)} y1={y1.toFixed(2)}
                             x2={x2.toFixed(2)} y2={y2.toFixed(2)}
                             stroke={
-                                kind === "zero"  ? "rgba(169,232,12,.7)"    :
-                                kind === "major" ? "rgba(255,255,255,.22)"  :
-                                                   "rgba(255,255,255,.11)"
+                                kind === "zero"  ? "rgba(255,255,255,.42)" :
+                                kind === "major" ? "rgba(255,255,255,.18)" :
+                                                   "rgba(255,255,255,.09)"
                             }
                             strokeWidth={kind === "zero" ? 1.5 : 1}
                             strokeLinecap="round"
