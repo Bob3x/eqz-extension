@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FreqWave EQ — Browser Audio Equalizer</title>
+    <style>
+        :root {
+            --accent: #84e80c;
+            --accent-dim: rgba(132, 232, 12, 0.12);
+            --accent-glow: rgba(132, 232, 12, 0.25);
+            --bg: #0f1014;
+            --surface: #16171c;
+            --surface-2: #1c1d24;
+            --text: #e8e8ec;
+            --muted: #8a8a92;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            font-size: 16px;
+            overflow-x: hidden;
+        }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(15, 16, 20, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .brand .accent { color: var(--accent); }
+
+        .brand .eq {
+            color: var(--muted);
+            font-weight: 400;
+            font-size: 15px;
+            margin-left: 4px;
+        }
+
+        nav a.nav-link {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.15s;
+        }
+
+        nav a.nav-link:hover { color: var(--text); }
+
+        /* ── Hero ── */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 120px 24px 80px;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(132, 232, 12, 0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--accent-dim);
+            border: 1px solid rgba(132, 232, 12, 0.25);
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 5px 12px;
+            border-radius: 100px;
+            margin-bottom: 28px;
+        }
+
+        .badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .hero h1 {
+            font-size: clamp(36px, 6vw, 64px);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            max-width: 800px;
+        }
+
+        .hero h1 .accent { color: var(--accent); }
+
+        .hero p.lead {
+            font-size: clamp(16px, 2vw, 19px);
+            color: var(--muted);
+            max-width: 560px;
+            margin-bottom: 40px;
+            line-height: 1.65;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--accent);
+            color: #0a0c08;
+            font-weight: 700;
+            font-size: 14px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: opacity 0.15s, transform 0.15s;
+            letter-spacing: -0.01em;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--surface);
+            color: var(--text);
+            font-weight: 600;
+            font-size: 14px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            border: 1px solid var(--border);
+            transition: border-color 0.15s, transform 0.15s;
+        }
+
+        .btn-secondary:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        /* ── EQ Visual ── */
+        .eq-visual {
+            margin-top: 64px;
+            width: 100%;
+            max-width: 640px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 32px;
+            position: relative;
+        }
+
+        .eq-visual-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .eq-bars {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 8px;
+            height: 80px;
+        }
+
+        .eq-bar-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .eq-bar {
+            width: 100%;
+            border-radius: 3px 3px 0 0;
+            background: var(--accent);
+            opacity: 0.85;
+            transition: height 0.3s ease;
+        }
+
+        .eq-bar-freq {
+            font-size: 10px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .spectrum-line {
+            margin-top: 20px;
+            height: 48px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .spectrum-line svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ── Features ── */
+        .section {
+            padding: 96px 24px;
+            max-width: 1080px;
+            margin: 0 auto;
+        }
+
+        .section-label {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: clamp(26px, 4vw, 38px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+            max-width: 560px;
+        }
+
+        .section-desc {
+            color: var(--muted);
+            font-size: 17px;
+            max-width: 520px;
+            line-height: 1.65;
+            margin-bottom: 56px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px;
+            transition: border-color 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(132, 232, 12, 0.2);
+        }
+
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--accent-dim);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            font-size: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        /* ── Voice Modes ── */
+        .modes-section {
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            padding: 96px 24px;
+        }
+
+        .modes-inner {
+            max-width: 1080px;
+            margin: 0 auto;
+        }
+
+        .modes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 48px;
+        }
+
+        .mode-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .mode-name {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .mode-card h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .mode-card p {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        /* ── How It Works ── */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            counter-reset: step;
+            margin-top: 48px;
+            max-width: 600px;
+        }
+
+        .step {
+            display: flex;
+            gap: 24px;
+            padding-bottom: 36px;
+            position: relative;
+        }
+
+        .step:not(:last-child)::before {
+            content: '';
+            position: absolute;
+            left: 19px;
+            top: 40px;
+            bottom: 0;
+            width: 1px;
+            background: var(--border);
+        }
+
+        .step-num {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent-dim);
+            border: 1px solid rgba(132, 232, 12, 0.3);
+            color: var(--accent);
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .step-body h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            padding-top: 8px;
+        }
+
+        .step-body p {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        /* ── Privacy Banner ── */
+        .privacy-banner {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 0 24px 96px;
+        }
+
+        .privacy-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 48px;
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+        }
+
+        .privacy-icon {
+            font-size: 36px;
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+
+        .privacy-card h2 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 10px;
+        }
+
+        .privacy-card p {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.65;
+            max-width: 520px;
+        }
+
+        .privacy-card a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px solid rgba(132, 232, 12, 0.3);
+            font-size: 14px;
+            display: inline-block;
+            margin-top: 14px;
+            transition: border-color 0.15s;
+        }
+
+        .privacy-card a:hover { border-bottom-color: var(--accent); }
+
+        /* ── Footer ── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 32px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1080px;
+            margin: 0 auto;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        footer .brand {
+            font-size: 16px;
+        }
+
+        footer p {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        footer a {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.15s;
+        }
+
+        footer a:hover { color: var(--text); }
+
+        footer nav {
+            position: static;
+            background: none;
+            backdrop-filter: none;
+            border: none;
+            padding: 0;
+            gap: 24px;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            nav { padding: 14px 20px; }
+
+            .privacy-card {
+                flex-direction: column;
+                gap: 20px;
+                padding: 28px 24px;
+            }
+
+            footer { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Nav -->
+    <nav>
+        <a href="#" class="brand">Freq<span class="accent">Wave</span><span class="eq">EQ</span></a>
+        <a href="privacy.html" class="nav-link">Privacy</a>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="badge">
+            <span class="badge-dot"></span>
+            Chrome Extension · Coming Soon
+        </div>
+
+        <h1>Audio EQ for<br>every <span class="accent">tab you watch</span></h1>
+
+        <p class="lead">
+            FreqWave EQ brings professional-grade audio control to your browser.
+            8-band equalizer, voice enhancement, live visualizer — all processed
+            locally, zero servers.
+        </p>
+
+        <div class="hero-actions">
+            <a href="https://github.com/Bob3x/freqwave-eq" class="btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                </svg>
+                View on GitHub
+            </a>
+        </div>
+
+        <!-- EQ bar preview -->
+        <div class="eq-visual">
+            <div class="eq-visual-label">8-Band Equalizer</div>
+            <div class="eq-bars">
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 22px;"></div>
+                    <span class="eq-bar-freq">32</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 34px;"></div>
+                    <span class="eq-bar-freq">64</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 42px;"></div>
+                    <span class="eq-bar-freq">125</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 58px;"></div>
+                    <span class="eq-bar-freq">250</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 72px;"></div>
+                    <span class="eq-bar-freq">500</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 64px;"></div>
+                    <span class="eq-bar-freq">1k</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 48px;"></div>
+                    <span class="eq-bar-freq">4k</span>
+                </div>
+                <div class="eq-bar-wrap">
+                    <div class="eq-bar" style="height: 30px;"></div>
+                    <span class="eq-bar-freq">8k</span>
+                </div>
+            </div>
+            <!-- Animated spectrum -->
+            <div class="spectrum-line">
+                <svg viewBox="0 0 576 48" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="specGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#84e80c" stop-opacity="0.5"/>
+                            <stop offset="100%" stop-color="#84e80c" stop-opacity="0"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M0,48 L0,32 Q24,28 48,30 Q72,32 96,22 Q120,12 144,18 Q168,24 192,14 Q216,4 240,10 Q264,16 288,8 Q312,0 336,6 Q360,12 384,16 Q408,20 432,24 Q456,28 480,22 Q504,16 528,26 Q552,36 576,30 L576,48 Z" fill="url(#specGrad)"/>
+                    <path d="M0,32 Q24,28 48,30 Q72,32 96,22 Q120,12 144,18 Q168,24 192,14 Q216,4 240,10 Q264,16 288,8 Q312,0 336,6 Q360,12 384,16 Q408,20 432,24 Q456,28 480,22 Q504,16 528,26 Q552,36 576,30" fill="none" stroke="#84e80c" stroke-width="1.5" opacity="0.7"/>
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="section">
+        <div class="section-label">Features</div>
+        <h2 class="section-title">Everything you need, nothing you don't</h2>
+        <p class="section-desc">
+            Built for people who care about how their audio sounds — whether it's a podcast,
+            a movie, or a YouTube video with a bad mix.
+        </p>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🎚</div>
+                <h3>8-Band Parametric EQ</h3>
+                <p>Full-range control from 32 Hz to 8 kHz. Each band adjustable ±12 dB with precise per-slider control. Flat by default — only shape what needs shaping.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎙</div>
+                <h3>Voice Enhancer</h3>
+                <p>Four curated DSP modes — Off, Dialogue, Leveler, and Clarity — each tuned for a different listening scenario. Leveler includes a dynamics compressor.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Live FFT Visualizer</h3>
+                <p>Real-time spectrum display driven by the post-processing audio signal, so you see exactly what you're hearing after the EQ curve is applied.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>100% Local Processing</h3>
+                <p>All audio processing happens inside your browser using the Web Audio API. No audio data ever leaves your device. No servers, no accounts, no tracking.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💾</div>
+                <h3>Persistent Settings</h3>
+                <p>Your EQ curve, knob positions, and Voice Enhancer mode are saved automatically. Open the extension a week later and your settings are exactly where you left them.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3>Zero Latency Routing</h3>
+                <p>Tab capture runs in an offscreen document separate from your page, so the extension never touches the page DOM and doesn't slow down the site you're on.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Voice Modes -->
+    <section class="modes-section">
+        <div class="modes-inner">
+            <div class="section-label">Voice Enhancer</div>
+            <h2 class="section-title">Four modes for every source</h2>
+            <p class="section-desc">
+                Pre-tuned curves that fix common audio problems in one click. Switch modes
+                without stopping playback.
+            </p>
+
+            <div class="modes-grid">
+                <div class="mode-card">
+                    <div class="mode-name">Off</div>
+                    <h3>Bypass</h3>
+                    <p>Voice Enhancer inactive. Your manual EQ curve and gain settings still apply. Use this when you want full manual control.</p>
+                </div>
+                <div class="mode-card">
+                    <div class="mode-name">Dialogue</div>
+                    <h3>Voice Lift</h3>
+                    <p>Cuts low mud, boosts upper-mid presence. Designed for podcasts and videos where voice sits too far back in the mix.</p>
+                </div>
+                <div class="mode-card">
+                    <div class="mode-name">Leveler</div>
+                    <h3>Dynamics Control</h3>
+                    <p>Adds a dynamics compressor to even out loud and quiet passages. Ideal for content with inconsistent levels, like live recordings.</p>
+                </div>
+                <div class="mode-card">
+                    <div class="mode-name">Clarity</div>
+                    <h3>Air & Detail</h3>
+                    <p>Progressive high-frequency lift that opens up the sound. Works well on compressed streaming audio that sounds dull or closed-in.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="section">
+        <div class="section-label">How it works</div>
+        <h2 class="section-title">Start in three steps</h2>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                    <h4>Install the extension</h4>
+                    <p>Load FreqWave EQ from the Chrome Web Store or install it unpacked in Developer mode via chrome://extensions.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                    <h4>Open the popup on any tab</h4>
+                    <p>Click the FreqWave EQ icon while on a tab playing audio — YouTube, Spotify, a podcast site, anything. Hit the Engine pill to start capture.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                    <h4>Shape your sound</h4>
+                    <p>Adjust the 8-band EQ, tweak Master Volume and Pre-Amp, and pick a Voice Enhancer mode. Changes apply in real time with no buffering or interruption.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Privacy -->
+    <div class="privacy-banner">
+        <div class="privacy-card">
+            <div class="privacy-icon">🛡️</div>
+            <div>
+                <h2>Your audio stays yours</h2>
+                <p>
+                    FreqWave EQ processes everything locally using the Web Audio API. No audio is
+                    recorded, no data is sent to any server, and there are no accounts or logins.
+                    Settings are stored on your device via Chrome's built-in sync storage.
+                </p>
+                <a href="privacy.html">Read the full privacy policy →</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <a href="#" class="brand">Freq<span class="accent">Wave</span><span class="eq">EQ</span></a>
+        <p>A personal project. Not affiliated with Google or Chrome.</p>
+        <nav>
+            <a href="privacy.html">Privacy</a>
+            <a href="https://github.com/Bob3x/freqwave-eq">GitHub</a>
+        </nav>
+    </footer>
+
+</body>
+</html>
