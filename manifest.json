@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "FreqWave EQ",
     "version": "1.0.0",
-    "description": "8-band Web Audio equalizer for browser tabs.",
+    "description": "8-band Web Audio Equalizer for fixing muddy podcasts, harsh streams and quiet dialogue.",
 
     "permissions": ["activeTab", "tabCapture", "offscreen", "storage"],
 
@@ -10,10 +10,10 @@
         "default_popup": "src/popup/popup.html",
         "default_title": "FreqWave EQ",
         "default_icon": {
-            "16": "favicon.svg",
-            "32": "favicon.svg",
-            "48": "favicon.svg",
-            "128": "favicon.svg"
+            "16": "icon-16.png",
+            "32": "icon-32.png",
+            "48": "icon-48.png",
+            "128": "icon-128.png"
         }
     },
 
@@ -23,9 +23,9 @@
     },
 
     "icons": {
-        "16": "favicon.svg",
-        "32": "favicon.svg",
-        "48": "favicon.svg",
-        "128": "favicon.svg"
+        "16": "icon-16.png",
+        "32": "icon-32.png",
+        "48": "icon-48.png",
+        "128": "icon-128.png"
     }
 }
