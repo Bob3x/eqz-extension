@@ -10,8 +10,19 @@ balance).
 
 ## Status
 
-Personal project, pre-release (v1.0 in progress). Not currently in the
-Chrome Web Store. Active priority is shipping v1.0.
+**Published v1.0.0** on the Chrome Web Store as of June 29, 2026.
+
+- Chrome Web Store: https://chromewebstore.google.com/detail/freqwave-eq/emikokoknlgeiloipjheoafjjeoicjap
+- Repository: https://github.com/Bob3x/freqwave-eq
+- Landing page: https://bob3x.github.io/freqwave-eq/
+- Privacy policy: https://bob3x.github.io/freqwave-eq/privacy.html
+- Category: Entertainment
+- Publisher: Borislav Ginov (non-trader)
+- Visibility: Public
+
+Active phase: post-launch maintenance and v1.0.1/v1.1 planning. No new
+features should be added without explicit decision — the priority is
+stability and any feedback from real users.
 
 ## Tech stack
 
@@ -58,12 +69,23 @@ src/
   shared/
     settings.ts                       # chrome.storage.sync wrapper
   index.css                           # global styles
+  assets/                             # extension-side runtime assets (icons used by manifest)
 manifest.json
+
+docs/                                 # public-facing GitHub Pages content
+  index.html                          # landing page
+  privacy.html                        # privacy policy
+  favicon.png
+  media/                              # archival visuals, screenshots, mockups (not code-side)
 ```
 
 Kebab-case duplicate files have been deleted in cleanup. If a kebab-case
 variant ever reappears (e.g., `freqwave-popup.tsx`), it is regression —
 do not edit it; restore the PascalCase as the active file.
+
+Note: `src/assets/` (runtime, used by manifest/components) and
+`docs/media/` (archival + public website) are separate folders for
+separate purposes. Do not consolidate them.
 
 ## Audio graph
 
@@ -126,6 +148,9 @@ bypass it.
   property. Older `#a9e80c` was deprecated for being too yellow-green.
 - The accent is the only color used for active state, position indicators,
   and emphasis. Inactive elements are muted gray.
+- The same accent and color tokens are used in the public landing page
+  (`docs/index.html`) and privacy policy (`docs/privacy.html`) for visual
+  brand consistency.
 
 ## Architectural decisions (locked)
 
@@ -240,18 +265,38 @@ Use the separate typed messages above.
   consumed in the offscreen document.)
 - No layout shift when toggling engine on/off
 - Pointer cursor on knobs/sliders (was previously showing resize cursor)
+- Listing published on Chrome Web Store with privacy policy URL,
+  permission justifications, screenshots, and category "Entertainment".
 
-## Known issues (priority order)
+## Backlog (v1.0.1 / v1.1)
 
-1. **UI polish (cosmetic, scheduled for the next polish pass):**
-    - Popup left edge crops in some viewport sizes
-    - Master Volume arc shifts hue toward yellow at high |dB|
-      (saturation/HSL approach needed, opacity caused this)
-    - Spectrum visualizer waveform clips at top/bottom of container
+These are candidates for the next update. Do NOT batch-implement without
+prioritization — wait for user feedback to shape what actually ships.
 
-2. Pending UX confirmations (deferred to v1.1):
-    - Per-site vs. global EQ settings
-    - Custom user-saved presets
+**v1.0.1 — small fixes:**
+
+- Add a secondary category (Tools) alongside Entertainment for broader reach
+- Review whether Master Volume arc could use intensity scaling refined
+  (currently subtle; was a polish iteration that landed but is not
+  perfect)
+- Resolve any user-reported issues from the first 1-2 weeks live
+
+**v1.1 — feature additions (deferred from v1.0 scope):**
+
+- **Per-site EQ profiles** — auto-load saved curve based on tab hostname.
+  This is the biggest competitor differentiator we postponed.
+- **Custom user-saved presets** — let users name and save their own
+  curves alongside the built-in modes.
+- A clean gain-reduction meter for the LEVELER mode (`DynamicsCompressorNode.reduction`),
+  shown only while LEVELER is active.
+- Possible secondary "skins"/themes for the popup UI.
+
+**v2.0 — bigger directions (not committed):**
+
+- Multi-band compression (Tier 3) for a more sophisticated Leveler mode
+- Custom AudioWorklet DSP for spectral processing / dynamic EQ
+- A constellation of related browser audio tools (limiter, normalizer,
+  per-tab loudness control) under a shared FreqWave brand
 
 ## Reference implementations
 
@@ -263,6 +308,11 @@ working open-source reference is:
   Same architecture as ours: Service Worker + Offscreen Document +
   tabCapture + Web Audio API. Use as a diff target when our
   implementation deviates from a known-working pattern.
+
+- **berraknil/BrowserEQ-V2** — German federally-funded open-source EQ
+  extension (PrototypeFund/BMBF). Accessibility-focused. Strong copyleft
+  license. Reference for accessibility framing and filter type design,
+  not for code patterns.
 
 ## Code conventions
 
@@ -287,6 +337,16 @@ working open-source reference is:
 - Fullscreen test: YouTube fullscreen button while engine is active —
   must enter and exit cleanly
 
+### Publishing a new version
+
+1. Bump `version` in `manifest.json` (e.g., `1.0.0` → `1.0.1`)
+2. Run `npm run build`
+3. Zip the contents of `dist/` (manifest.json must be at the zip root)
+4. Upload to the Chrome Web Store Developer Dashboard
+5. Update store listing fields only if changed; re-justify permissions
+   only if the permission set changed
+6. Submit for review
+
 ## What NOT to do
 
 - Don't move the audio engine into the service worker. Service workers
@@ -302,7 +362,8 @@ working open-source reference is:
   case. State change should be silent and visual only.
 - Don't overload SET_GAIN — use the separate typed messages defined
   in the message protocol.
-- Don't add features beyond what's specified. We'll iterate after v1.0.
+- Don't add features beyond what's specified in the v1.0.1/v1.1 backlog
+  without explicit decision.
 - Don't refactor working code unless asked. Half-finished refactors are
   worse than messy working code.
 - Don't accept "Chrome platform restriction" as an answer to bugs.
@@ -314,6 +375,10 @@ working open-source reference is:
 - Don't break fullscreen. The captured tab must be able to enter and
   exit fullscreen without disruption.
 - Don't change the accent color from `#84e80c` without explicit instruction.
+- Don't merge `src/assets/` and `docs/media/`. They are separate by
+  intent — one is build-time, the other is public website + archive.
+- Don't bump `manifest.json` version backwards or sideways. Each release
+  to the Chrome Web Store needs a strictly higher version number.
 
 ## How to use this file when working with Claude Code
 
@@ -321,10 +386,11 @@ Reference this document at the start of any prompt that touches code:
 
 > Read `CLAUDE.md` at the project root before doing anything. The "Active
 > source files" section tells you which files are live. The "What NOT to do"
-> section lists banned approaches. The "Known issues" section lists what's
-> currently broken and what's been fixed (don't re-break it).
-> The "Reference implementations" section lists the equalizer-plus repo
-> to use as a diff target for architecture/engine questions.
+> section lists banned approaches. The "Current state" section lists what's
+> working that must not regress. The "Backlog" section is the only place to
+> draw from for v1.0.1/v1.1 work — don't invent features outside it.
+> The "Reference implementations" section lists open-source reference
+> repos to use as diff targets for architecture/engine questions.
 
 If something in this doc is wrong or outdated, fix it in a separate pass
 before changing code.
